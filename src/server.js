@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { readFile, readdir, mkdir, writeFile, rename, appendFile, open } from 'node:fs/promises';
+import { readFile, readdir, mkdir, writeFile, rename, appendFile, open, rm } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, scryptSync } from 'node:crypto';
@@ -11,6 +11,16 @@ import { PluginManager } from './plugins.js';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const token = process.env.ADMIN_PASSWORD || process.env.ADMIN_TOKEN;
 const configPath = resolve(root, process.env.CONFIG_FILE || 'config.json');
+// 原子写配置；若 config.json 被 bind-mount（如 systemd ReadWritePaths 指定单个文件）导致 rename EBUSY，则退回直接写。
+async function saveConfig(text) {
+  const tmp = configPath + '.tmp';
+  try { await writeFile(tmp, text, { mode: 0o600 }); await rename(tmp, configPath); }
+  catch (error) {
+    if (!['EBUSY', 'EXDEV', 'EPERM', 'EACCES'].includes(error?.code)) throw error;
+    await rm(tmp, { force: true }).catch(() => {});
+    await writeFile(configPath, text, { mode: 0o600 });
+  }
+}
 let config;
 try {config=validateConfig(JSON.parse(await readFile(configPath,'utf8')));} catch(error) {if(error.code !== 'ENOENT') throw error;config=validateConfig({servers:[],pluginsDirectory:'plugins'});}
 let savedConfig = config;
@@ -183,8 +193,7 @@ const server = http.createServer(async (req, res) => {
       if(accountChanged && !verifyPassword(input.currentPassword)) return json(res,400,{error:'当前密码错误'});
       await new ServiceController(root,dataDir).init(candidate.servers);
       const document={...candidate,servers:candidate.servers.map(service=>{const copy={...service};if(copy.source){delete copy.systemd;delete copy.project;}return copy;})};
-      await writeFile(configPath+'.tmp',JSON.stringify(document,null,2)+'\n',{mode:0o600});
-      await rename(configPath+'.tmp',configPath);savedConfig=document;
+      await saveConfig(JSON.stringify(document,null,2)+'\n');savedConfig=document;
       if(accountChanged) {
         const next={salt:randomBytes(32).toString('hex')};if(input.newPassword || !passwordHash) next.hash=scryptSync(input.newPassword || token,next.salt,64).toString('hex');
         else {next.salt=passwordHash.salt;next.hash=passwordHash.hash;}next.username=nextUsername;
@@ -204,7 +213,7 @@ const server = http.createServer(async (req, res) => {
         for(const active of config.servers){if(!active.project&&!active.systemd)continue;if((await services.inspect(active).catch(()=>null))?.running && JSON.stringify(candidate.servers.find(s=>s.id===active.id))!==JSON.stringify(active))return json(res,409,{error:'请先停止要修改或移除的本地服务'});}
         await services.init(candidate.servers);
         const document={...candidate,servers:candidate.servers.map(service=>{const copy={...service};if(copy.source){delete copy.systemd;delete copy.project;}return copy;})};
-        await writeFile(configPath+'.tmp',JSON.stringify(document,null,2)+'\n',{mode:0o600});await rename(configPath+'.tmp',configPath);
+        await saveConfig(JSON.stringify(document,null,2)+'\n');
         config.servers=candidate.servers;savedConfig=document;
         for(const s of config.servers)history[s.id] ||= [];
         for(const id of Object.keys(history))if(!config.servers.some(s=>s.id===id))delete history[id];
