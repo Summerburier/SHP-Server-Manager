@@ -22,7 +22,7 @@
 .plugin-card .plugin-desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin:14px 20px 0;font-size:13px;line-height:1.5;min-height:3em;color:#c3cbc7;overflow-wrap:anywhere;overflow:hidden}
 
 /* 固定高度信息栏：滚动显示各实例概要，不逐个展开实例 */
-.plugin-ticker{height:94px;overflow:auto;margin:14px 20px 0;padding:10px 12px;border:1px solid #2f3a35;background:#0b100d;font-size:12px;line-height:1.95;color:#c3cbc7}
+.plugin-ticker{height:62px;overflow:auto;margin:14px 20px 0;padding:9px 12px;border:1px solid #2f3a35;background:#0b100d;font-size:12px;line-height:1.85;color:#c3cbc7}
 .plugin-ticker p{display:flex;align-items:baseline;gap:8px;margin:0;min-width:0}
 .plugin-ticker p span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .plugin-ticker-empty{color:var(--muted)}

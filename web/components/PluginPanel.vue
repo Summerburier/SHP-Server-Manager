@@ -52,8 +52,12 @@ function summary(instance) {
   return out;
 }
 function line(instance) {
+  const service = instance.service ? serviceName(instance.service) : '未绑定';
   const version = summary(instance).find(item => item.label === '版本')?.value;
-  return [instance.label, instance.service ? serviceName(instance.service) : '未绑定', labels[instance.status] || instance.status, version].filter(Boolean).join(' · ');
+  const parts = instance.label === service ? [instance.label] : [instance.label, service];
+  parts.push(labels[instance.status] || instance.status);
+  if (version) parts.push(version);
+  return parts.join(' · ');
 }
 function fieldsOf(instance) {
   if (Array.isArray(instance.settings) && instance.settings.length) return instance.settings;
