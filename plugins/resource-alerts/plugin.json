@@ -1,0 +1,13 @@
+{
+  "id": "resource-alerts",
+  "name": "资源阈值检查",
+  "version": "1.2.0",
+  "apiVersion": 1,
+  "description": "检查 CPU、内存、磁盘占用与游戏节点状态。通知地址自动取实例绑定服务的 url，无需手动填写。",
+  "entry": "index.js",
+  "settings": [
+    { "key": "threshold", "type": "number", "label": "告警阈值 (%)", "default": 90, "min": 1, "max": 100 },
+    { "key": "notifyOffline", "type": "boolean", "label": "节点离线时告警", "default": true }
+  ],
+  "config": { "threshold": 90 }
+}

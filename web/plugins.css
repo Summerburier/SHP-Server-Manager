@@ -1,0 +1,113 @@
+.plugin-toolbar{align-items:flex-start;flex-wrap:wrap;gap:12px}
+.plugin-toolbar>div{flex:1 1 240px;min-width:0}
+.plugin-toolbar p{margin:5px 0 0;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+
+.plugin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:18px;align-items:stretch;margin-top:18px}
+.plugin-grid .plugin-card{display:flex;flex-direction:column;align-items:stretch;margin:0;padding:0;max-width:680px;min-width:0}
+.plugin-card-top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px 0}
+.plugin-id{font-size:12px;color:var(--muted);letter-spacing:.08em;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plugin-count{font-size:12px;color:var(--muted);white-space:nowrap}
+.plugin-state{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);white-space:nowrap}
+.plugin-state i{width:6px;height:6px;background:currentColor;border-radius:50%;box-shadow:0 0 8px currentColor}
+.plugin-state.enabled{color:var(--mint)}
+.plugin-state.error{color:var(--danger)}
+.plugin-state.starting{color:var(--warning)}
+
+.plugin-identity{display:flex;align-items:center;gap:14px;padding:16px 20px 0}
+.plugin-symbol{display:grid;place-items:center;flex-shrink:0;width:46px;height:46px;border:1px solid #145443;background:#4ed8af0a}
+.plugin-symbol svg{width:27px;height:27px;stroke:var(--mint);fill:none;stroke-width:1.5;stroke-linejoin:round}
+.plugin-title{min-width:0}
+.plugin-title h3{margin:0;font-size:19px;font-weight:600;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plugin-title small{margin-left:8px;color:var(--muted);font-size:12px}
+.plugin-card .plugin-desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin:14px 20px 0;font-size:13px;line-height:1.5;min-height:3em;color:#c3cbc7;overflow-wrap:anywhere;overflow:hidden}
+
+/* 固定高度信息栏：滚动显示各实例概要，不逐个展开实例 */
+.plugin-ticker{height:94px;overflow:auto;margin:14px 20px 0;padding:10px 12px;border:1px solid #2f3a35;background:#0b100d;font-size:12px;line-height:1.95;color:#c3cbc7}
+.plugin-ticker p{display:flex;align-items:baseline;gap:8px;margin:0;min-width:0}
+.plugin-ticker p span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plugin-ticker-empty{color:var(--muted)}
+.plugin-ticker .dot{flex:none;width:7px;height:7px;border-radius:50%;background:currentColor;transform:translateY(-1px)}
+.plugin-ticker .dot.enabled{color:var(--mint)}
+.plugin-ticker .dot.error{color:var(--danger)}
+.plugin-ticker .dot.starting{color:var(--warning)}
+.plugin-ticker .dot.disabled{color:#6b7a72}
+
+.plugin-card-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 20px 20px;margin-top:auto;padding-top:14px;border-top:1px solid var(--line)}
+.plugin-card-foot button{padding:8px 16px;font-size:13px}
+.plugin-facts{margin-right:auto;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+
+.plugin-instance-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.plugin-instance-label{font-size:14px;font-weight:600;min-width:0;overflow-wrap:anywhere}
+.plugin-instance-label small{color:var(--muted);font-weight:400}
+.plugin-notice{margin:10px 0 0;padding:8px 11px;font-size:12.5px;line-height:1.5;border-left:3px solid;overflow-wrap:anywhere}
+.plugin-notice.error{color:#ff9c92;border-color:var(--danger);background:#ff545414}
+.plugin-notice.warning{color:#ffd15c;border-color:var(--warning);background:#ffc60014}
+.plugin-instance-summary{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px;font-size:13px}
+.plugin-instance-summary span{display:inline-flex;gap:6px;align-items:baseline;min-width:0}
+.plugin-instance-summary b{color:var(--muted);font-weight:400}
+.plugin-instance-summary em{font-style:normal;overflow-wrap:anywhere}
+.plugin-muted{color:var(--muted);font-size:13px}
+.plugin-instance-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+.plugin-instance-actions button{padding:7px 14px;font-size:13px}
+.plugin-instance-actions .danger{color:#ff8d81;border-color:#a33e32}
+.plugin-instance-actions .danger:not(:disabled):hover{background:#e731181a;border-color:#c1544a}
+.plugin-remove{background:transparent;color:#ff8d81;border-color:#a33e32}
+.plugin-remove:not(:disabled):hover{background:#e731181a;border-color:#c1544a}
+.plugin-toggle{margin-left:auto;min-width:88px;font-weight:600}
+.plugin-toggle.on{background:var(--mint);color:#06110d;border-color:#6fe8c4}
+.plugin-toggle.off{background:transparent;color:#ff8d81;border-color:#a33e32}
+.plugin-toggle.off:not(:disabled):hover{background:#e731181a;border-color:#c1544a}
+
+/* 进入插件后的实例列表 */
+.plugin-instance-dialog{width:min(680px,calc(100vw - 32px))}
+.instance-list{display:flex;flex-direction:column;gap:12px;max-height:min(58dvh,540px);overflow:auto;padding:0 4px 0 0}
+.instance-row{border:1px solid #2f3a35;background:#0b100d;padding:14px;min-width:0}
+.instance-add-card{display:flex;align-items:center;justify-content:center;gap:8px;min-height:66px;border:1px dashed #3e4b45;background:transparent;color:var(--muted);font-size:13px;letter-spacing:.02em}
+.instance-add-card>span{font-size:18px;line-height:1}
+.instance-add-card:not(:disabled):hover{border-color:#58675f;color:var(--text);background:#4ed8af0a}
+
+.plugin-result{min-width:0;margin:12px 0 0}
+.plugin-result-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.plugin-result-head h4{margin:0;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.1em}
+.plugin-result-head small{color:var(--muted);font-size:12px;white-space:nowrap}
+.plugin-result-empty{margin:8px 0 0;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.result-grid{display:grid;grid-template-columns:minmax(0,40%) minmax(0,1fr);gap:6px 18px;margin:10px 0 0}
+.result-grid dt{min-width:0;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.result-grid dd{min-width:0;margin:0;font-size:13px;overflow-wrap:anywhere}
+.result-list{margin:10px 0 0;padding-left:18px;font-size:13px;min-width:0}
+.result-list li{margin:3px 0;overflow-wrap:anywhere}
+.result-grid .ok,.plugin-result .ok{color:var(--mint)}
+.result-grid .bad,.plugin-result .bad{color:var(--danger)}
+
+.plugin-editor-dialog{width:min(560px,calc(100vw - 32px))}
+.plugin-editor-dialog.plugin-instance-dialog{width:min(680px,calc(100vw - 32px))}
+.plugin-editor-dialog .modal-heading{position:relative}
+.plugin-back{position:absolute;top:0;right:0;width:auto;padding:7px 15px;font-size:13px}
+.plugin-editor-title{display:flex;align-items:baseline;gap:10px;min-width:0}
+.plugin-editor-title h2{margin:0;font-size:20px;overflow-wrap:anywhere}
+.plugin-editor-title code{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.plugin-editor-desc{margin:14px 0 18px;color:#c3cbc7;font-size:13px;overflow-wrap:anywhere}
+.plugin-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.plugin-fields-meta{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #2f3a35}
+.plugin-field{display:flex;flex-direction:column;gap:7px;min-width:0;font-size:13px;color:#c3cbc7}
+.plugin-field>span{display:flex;align-items:center;gap:8px}
+.plugin-field input[type=text],.plugin-field input[type=number],.plugin-field select{width:100%;min-width:0;margin:0;padding:9px 12px;font-size:14px;background:#141816;border-color:#3e4b45}
+.plugin-field-check{flex-direction:row;align-items:center;gap:10px}
+.plugin-field-check>span{flex:1}
+.plugin-field-check input[type=checkbox]{order:-1;width:18px;height:18px;padding:0;accent-color:var(--mint)}
+.plugin-detail-body{max-height:min(62dvh,600px);overflow:auto;margin:0 0 8px;padding-right:4px}
+.plugin-editor-hint{margin-right:auto;align-self:center;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+
+@media(max-width:650px){
+  .plugin-grid{gap:14px}
+  .plugin-card-top{padding:14px 16px 0}
+  .plugin-identity{padding:14px 16px 0}
+  .plugin-card .plugin-desc{margin-left:16px;margin-right:16px}
+  .plugin-ticker{margin-left:16px;margin-right:16px}
+  .plugin-card-foot{margin-left:16px;margin-right:16px}
+  .result-grid{grid-template-columns:1fr;gap:2px 0}
+  .result-grid dd{margin-bottom:6px}
+  .plugin-toggle{min-width:0}
+  .plugin-editor-dialog .modal-actions{flex-wrap:wrap}
+  .plugin-editor-hint{flex-basis:100%;margin:0 0 6px;align-self:flex-start}
+}

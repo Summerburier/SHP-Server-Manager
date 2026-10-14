@@ -1,0 +1,24 @@
+/* 运行监控页布局：两侧区块固定高度，仅中间图表随窗口自适应宽度与高度。
+   最后导入，用于覆盖历史各断点写死的图表高度。 */
+/* 下方三张卡片统一等高、高度写死；内容超出时在卡片内部滚动（如网卡详情）。 */
+.host-info-grid{grid-auto-rows:220px;align-items:stretch}
+.host-info-grid>.panel{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.host-info-grid>.panel>.info-body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
+@media(min-width:1000px){
+  .workspace main:has(.host-metrics){height:100dvh;min-height:100dvh}
+  .workspace main:has(.host-metrics)>:not(.host-charts){flex:0 0 auto}
+  .workspace main:has(.host-metrics)>.host-charts{flex:1 1 auto;min-height:160px}
+
+  .host-charts.combined-chart{align-items:stretch;grid-template-rows:minmax(0,1fr)}
+  .host-charts.combined-chart>.panel{display:flex;flex-direction:column;min-height:0}
+  .host-charts.combined-chart .section-heading,
+  .host-charts.combined-chart .legend,
+  .host-charts.combined-chart .table-scroll{flex:0 0 auto}
+  .host-charts.combined-chart .trend{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+  .host-charts.combined-chart .trend svg{flex:1 1 auto;height:0;min-height:110px;max-height:none}
+
+  .host-charts.combined-chart .game-monitor{display:flex;flex-direction:column;min-height:0}
+  .host-charts.combined-chart .game-monitor-grid{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;gap:5px}
+  .host-charts.combined-chart .game-monitor-grid>.table-scroll{flex:0 0 auto}
+  .host-charts.combined-chart .game-monitor-grid .trend{flex:1 1 auto;min-height:0}
+}

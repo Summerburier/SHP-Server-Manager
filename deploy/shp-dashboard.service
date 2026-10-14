@@ -1,0 +1,24 @@
+[Unit]
+Description=SHP independent server dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=shp-dashboard
+Group=shp-dashboard
+WorkingDirectory=/opt/SHP-Server-Manager
+EnvironmentFile=/opt/SHP-Server-Manager/.env
+ExecStart=/usr/bin/node /opt/SHP-Server-Manager/src/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=40
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/SHP-Server-Manager/data /opt/SHP-Server-Manager/config.json
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

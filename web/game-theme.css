@@ -1,0 +1,79 @@
+/* Shared by Vite development and the production build.
+   Preserve the game's palette and frame treatment without decorative icons. */
+:root {
+  --bg: #0c0f0e;
+  --panel: #141816;
+  --line: #2f3a35;
+  --text: #f2f2f2;
+  --muted: #a0aaa5;
+  --mint: #4ed8af;
+  --blue: #9fd4ff;
+  --warning: #ffc600;
+  --danger: #ff5454;
+  font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+}
+::selection { background: var(--mint); color: #06110d; }
+aside { background: #101511; border-color: var(--line); }
+.brand { color: var(--text); }
+button, input, select, nav button, .panel, .metrics article,
+.status-pill, .tag, .notice, .login form, dialog, .plugin-card,
+.plugin-directory, .meter, .meter i { border-radius: 0; }
+button { position: relative; background: var(--mint); color: #06110d; border-color: #6fe8c4; letter-spacing: .04em; }
+button:not(:disabled):hover { filter: none; background: #59f4ca; }
+button::after {
+  content: ''; position: absolute; inset: -4px; opacity: 0; pointer-events: none;
+  background: linear-gradient(var(--mint), var(--mint)) top left / 9px 1px no-repeat,
+    linear-gradient(var(--mint), var(--mint)) top left / 1px 9px no-repeat,
+    linear-gradient(var(--mint), var(--mint)) bottom right / 9px 1px no-repeat,
+    linear-gradient(var(--mint), var(--mint)) bottom right / 1px 9px no-repeat;
+  transition: opacity 150ms;
+}
+button:not(:disabled):hover::after, button:focus-visible::after { opacity: 1; }
+button:not(.secondary):not(.text-button):not(nav button):not(.range-controls button) {
+  background-image: repeating-linear-gradient(-55deg, #0002 0 2px, transparent 2px 6px);
+  background-size: 24px 100%; background-repeat: no-repeat; background-position: right;
+}
+.secondary { background: #1a201d; color: var(--text); border-color: #3e4b45; }
+.secondary:not(:disabled):hover { background: #222a26; border-color: #2a9e7f; }
+nav button { background: transparent; color: #a0aaa5; border-color: transparent; }
+nav button.active { background: #4ed8af14; color: var(--mint); border-color: #2a9e7f; box-shadow: inset 3px 0 var(--mint); }
+nav button:not(:disabled):hover { background: #1e2c24; color: var(--text); }
+input, select { background: #0b100d; border-color: #3e4b45; }
+.range-controls button { background: #141816; color: #a0aaa5; }
+.range-controls button.active { background: #4ed8af1a; color: var(--mint); border-color: #2a9e7f; }
+.panel, .metrics article, .login form, .plugin-card {
+  position: relative; background: linear-gradient(130deg, #1b221d, #101612); border-color: var(--line);
+}
+.panel::after, .metrics article::after, .login form::after, .plugin-card::after {
+  content: ''; position: absolute; inset: -1px; pointer-events: none;
+  background: linear-gradient(#58675f, #58675f) top left / 10px 2px no-repeat,
+    linear-gradient(#58675f, #58675f) top left / 2px 10px no-repeat,
+    linear-gradient(#58675f, #58675f) top right / 10px 2px no-repeat,
+    linear-gradient(#58675f, #58675f) top right / 2px 10px no-repeat,
+    linear-gradient(#58675f, #58675f) bottom left / 10px 2px no-repeat,
+    linear-gradient(#58675f, #58675f) bottom left / 2px 10px no-repeat,
+    linear-gradient(#58675f, #58675f) bottom right / 10px 2px no-repeat,
+    linear-gradient(#58675f, #58675f) bottom right / 2px 10px no-repeat;
+}
+header { padding-bottom: 22px; border-bottom: 1px solid #3e4b45; }
+h1 { font-weight: 800; letter-spacing: .06em; }
+.section-heading { padding-bottom: 15px; border-bottom: 1px solid var(--line); }
+.metrics article::before { content: ''; position: absolute; top: -1px; left: 20px; width: 24px; height: 2px; background: var(--mint); }
+.metrics strong { font-family: 'Noto Sans SC', sans-serif; }
+.meter { background: #2d3632; }
+.meter i { background-image: repeating-linear-gradient(-55deg, #06110d33 0 2px, transparent 2px 6px); }
+.status-pill, .tag { color: var(--mint); background: #0d2c24; border-color: #2a9e7f; }
+.status-pill.offline { color: var(--danger); background: #e731181a; border-color: #a33e32; }
+.chart-grid line { stroke: #4ed8af14; stroke-dasharray: 3 5; }
+.server { border-left: 2px solid #2a9e7f; padding-left: 16px; }
+.plugin-directory, pre { background: #0b100d; }
+summary { color: var(--mint); }
+pre { color: #c3cbc7; }
+.notice { background: #201c0f; color: #f2cd65; border-color: #9c7c16; }
+.text-button { background: transparent; color: inherit; border: none; }
+.login, .loading { background: #0c0f0e; }
+dialog { background: #141816; border-color: #58675f; }
+footer { border-top: 1px solid var(--line); margin-top: 20px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
