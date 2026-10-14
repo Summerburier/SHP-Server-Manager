@@ -40,9 +40,13 @@ done
 if [ "$(id -u)" -ne 0 ]; then echo "请用 root 或 sudo 运行。" >&2; exit 1; fi
 [ -f "$ROOT/package.json" ] || { echo "在 $ROOT 找不到 package.json，请用 --dir 指定后台目录。" >&2; exit 1; }
 
-# 解析 node / npm：优先 --node，其次 PATH，再退回 sudo 原用户的登录环境（nvm 等）
+# 解析 node / npm：优先 --node，其次 PATH，再找 sudo 原用户的 nvm 安装，最后退回其登录环境
 if [ -z "$NODE" ]; then NODE="$(command -v node || true)"; fi
-if [ -z "$NODE" ] && [ -n "${SUDO_USER:-}" ]; then NODE="$(sudo -u "$SUDO_USER" -H bash -lc 'command -v node' 2>/dev/null || true)"; fi
+if [ -z "$NODE" ] && [ -n "${SUDO_USER:-}" ]; then
+  USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+  [ -n "$USER_HOME" ] && NODE="$(ls -1 "$USER_HOME"/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1)"
+  if [ -z "$NODE" ]; then NODE="$(sudo -u "$SUDO_USER" -H bash -lc 'command -v node' 2>/dev/null || true)"; fi
+fi
 [ -n "$NODE" ] || { echo "找不到 node：请用 --node 指定绝对路径（如 /home/<用户>/.nvm/versions/node/vXX/bin/node）。" >&2; exit 1; }
 NPM="$(dirname -- "$NODE")/npm"
 [ -x "$NPM" ] || NPM="$(command -v npm || true)"
