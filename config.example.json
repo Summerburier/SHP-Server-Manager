@@ -4,13 +4,6 @@
   "host": {
     "pollIntervalSeconds": 5
   },
-  "servers": [
-    {
-      "id": "main",
-      "name": "卫戍协议",
-      "url": "http://127.0.0.1:3000",
-      "source": "../Stronghold-Protocol"
-    }
-  ],
+  "servers": [],
   "pluginsDirectory": "plugins"
 }

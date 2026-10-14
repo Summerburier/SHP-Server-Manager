@@ -83,10 +83,8 @@ chmod 640 "$ROOT/.env"
 chown "$SERVICE_USER":"$SERVICE_USER" "$ROOT/config.json"   # 后台可写回配置（服务管理/设置保存）
 chmod 640 "$ROOT/config.json"
 
-# 4) systemd 单元（ROOT 在 /home、/root 下时不启用 ProtectHome，否则服务读不到自己）
+# 4) systemd 单元
 UNIT="/etc/systemd/system/${NAME}.service"
-PROTECT_HOME="ProtectHome=true"
-case "$ROOT" in /home/*|/root/*) PROTECT_HOME="ProtectHome=false" ;; esac
 {
   echo "[Unit]"
   echo "Description=SHP independent server dashboard"
@@ -104,11 +102,9 @@ case "$ROOT" in /home/*|/root/*) PROTECT_HOME="ProtectHome=false" ;; esac
   echo "Restart=on-failure"
   echo "RestartSec=5"
   echo "TimeoutStopSec=40"
-  echo "NoNewPrivileges=true"
+  # ProtectSystem=full 只读系统目录，允许写项目目录（config.json 保存、插件更新游戏目录）
+  echo "ProtectSystem=full"
   echo "PrivateTmp=true"
-  echo "ProtectSystem=strict"
-  echo "${PROTECT_HOME}"
-  echo "ReadWritePaths=${ROOT}/data ${ROOT}/config.json"
   echo "UMask=0077"
   echo
   echo "[Install]"

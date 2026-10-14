@@ -81,7 +81,7 @@ sudo bash deploy/install-dashboard.sh --host 0.0.0.0   # 对外访问
 ```
 
 - 后台启动的本地服务**脱手运行**：后台退出或重启都不会停止它们；再次进入后台按 pid 文件识别并继续管理。命令在**后台所在主机**执行。
-- 附带的 `deploy/shp-dashboard.service` 使用 `NoNewPrivileges=true`，会禁止 sudo 提权；需要时改为 `false` 并给运行账户配置精确的 sudo 权限。
+- 后台以 `ProtectSystem=full` 运行（只读系统目录、可写项目目录，便于保存 `config.json` 与插件更新游戏目录）；如需页面用 sudo 控制 systemd，给运行账户配置精确的 sudo 权限即可。
 
 ## HTTPS 反向代理
 

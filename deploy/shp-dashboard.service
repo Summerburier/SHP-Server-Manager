@@ -13,11 +13,9 @@ ExecStart=/usr/bin/node /opt/SHP-Server-Manager/src/server.js
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=40
-NoNewPrivileges=true
+# ProtectSystem=full 只读系统目录，允许写项目目录（保存 config.json、插件更新游戏目录）
+ProtectSystem=full
 PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/opt/SHP-Server-Manager/data /opt/SHP-Server-Manager/config.json
 UMask=0077
 
 [Install]
