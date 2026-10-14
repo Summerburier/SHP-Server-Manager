@@ -292,7 +292,7 @@ const server = http.createServer(async (req, res) => {
       } finally { busy.delete(target.id); }
     }
     json(res, 404, { error: '接口不存在' });
-  } catch (error) { console.error(error.message); if (!res.headersSent) json(res, 400, { error: '请求无法处理' }); else res.end(); }
+  } catch (error) { console.error(error.message); if (!res.headersSent) json(res, 400, { error: `请求无法处理：${String(error?.message || error).slice(0, 200)}` }); else res.end(); }
 });
 server.requestTimeout = 15000;
 server.headersTimeout = 10000;
