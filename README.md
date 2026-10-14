@@ -35,7 +35,7 @@ sudo bash deploy/install-dashboard.sh                  # 默认 127.0.0.1:7999
 sudo bash deploy/install-dashboard.sh --host 0.0.0.0   # 对外访问
 ```
 
-脚本会创建系统用户 `shp-dashboard`、执行 `npm ci` + 构建、准备 `data/`、`.env`（随机初始密码）、`config.json`，写入 `/etc/systemd/system/shp-dashboard.service` 后 `daemon-reload` + `enable --now`，并打印访问地址、初始密码和日志命令。参数：`--name` / `--user` / `--dir` / `--port` / `--host` / `--no-build`。
+脚本会创建系统用户 `shp-dashboard`、执行 `npm ci` + 构建、准备 `data/`、`.env`（随机初始密码）、`config.json`，写入 `/etc/systemd/system/shp-dashboard.service` 后 `daemon-reload` + `enable --now`，并打印访问地址、初始密码和日志命令。参数：`--name` / `--user` / `--dir` / `--port` / `--host` / `--node`（node 绝对路径，nvm 等 sudo 下找不到 node 时用）/ `--no-build`。
 
 手动：参考模板 `deploy/shp-dashboard.service`，按实际 Node 路径改 `ExecStart` 后 `systemctl daemon-reload && systemctl enable --now shp-dashboard`。
 

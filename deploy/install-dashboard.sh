@@ -11,6 +11,7 @@
 #   --dir <目录>   后台目录，默认脚本所在仓库根目录
 #   --port <端口>  监听端口，默认 7999（写入 .service 的 Environment）
 #   --host <地址>  监听地址，默认 127.0.0.1（对外访问用 0.0.0.0）
+#   --node <路径>  node 绝对路径（nvm 等 sudo 下找不到 node 时用）
 #   --no-build     跳过 npm ci / npm run build（已构建过时用）
 set -euo pipefail
 
@@ -19,6 +20,7 @@ SERVICE_USER=shp-dashboard
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT=7999
 HOST=127.0.0.1
+NODE=""
 BUILD=1
 
 while [ "$#" -gt 0 ]; do
@@ -28,6 +30,7 @@ while [ "$#" -gt 0 ]; do
     --dir) ROOT="$(cd -- "$2" && pwd)"; shift 2 ;;
     --port) PORT="$2"; shift 2 ;;
     --host) HOST="$2"; shift 2 ;;
+    --node) NODE="$2"; shift 2 ;;
     --no-build) BUILD=0; shift ;;
     -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "未知参数: $1（--help 查看用法）" >&2; exit 1 ;;
@@ -37,8 +40,13 @@ done
 if [ "$(id -u)" -ne 0 ]; then echo "请用 root 或 sudo 运行。" >&2; exit 1; fi
 [ -f "$ROOT/package.json" ] || { echo "在 $ROOT 找不到 package.json，请用 --dir 指定后台目录。" >&2; exit 1; }
 
-NODE="$(command -v node || true)"
-[ -n "$NODE" ] || { echo "找不到 node，请先安装 Node.js 22/24。" >&2; exit 1; }
+# 解析 node / npm：优先 --node，其次 PATH，再退回 sudo 原用户的登录环境（nvm 等）
+if [ -z "$NODE" ]; then NODE="$(command -v node || true)"; fi
+if [ -z "$NODE" ] && [ -n "${SUDO_USER:-}" ]; then NODE="$(sudo -u "$SUDO_USER" -H bash -lc 'command -v node' 2>/dev/null || true)"; fi
+[ -n "$NODE" ] || { echo "找不到 node：请用 --node 指定绝对路径（如 /home/<用户>/.nvm/versions/node/vXX/bin/node）。" >&2; exit 1; }
+NPM="$(dirname -- "$NODE")/npm"
+[ -x "$NPM" ] || NPM="$(command -v npm || true)"
+[ -n "$NPM" ] || { echo "找不到 npm（应与 node 同目录）。" >&2; exit 1; }
 NODE_MAJOR="$("$NODE" -p 'process.versions.node.split(".")[0]')"
 [ "$NODE_MAJOR" -ge 22 ] || { echo "Node.js 版本过低（$("$NODE" -v)），需要 22 或更高。" >&2; exit 1; }
 
@@ -50,7 +58,7 @@ fi
 
 # 2) 依赖与构建
 if [ "$BUILD" -eq 1 ]; then
-  ( cd "$ROOT" && npm ci --no-audit --no-fund && npm run build )
+  ( cd "$ROOT" && "$NPM" ci --no-audit --no-fund && "$NPM" run build )
 fi
 
 # 3) 数据目录与配置
