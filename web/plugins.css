@@ -3,7 +3,7 @@
 .plugin-toolbar p{margin:5px 0 0;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
 
 .plugin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:18px;align-items:stretch;margin-top:18px}
-.plugin-grid .plugin-card{display:flex;flex-direction:column;align-items:stretch;margin:0;padding:0;max-width:680px;min-width:0}
+.plugin-grid .plugin-card{display:flex;flex-direction:column;align-items:stretch;margin:0;padding:0;min-width:0}
 .plugin-card-top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px 0}
 .plugin-id{font-size:12px;color:var(--muted);letter-spacing:.08em;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .plugin-count{font-size:12px;color:var(--muted);white-space:nowrap}
