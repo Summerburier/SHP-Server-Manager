@@ -86,8 +86,7 @@ try {
   await page.getByRole('button',{name:'添加',exact:true}).click();
   await page.getByRole('heading',{name:'弹窗测试服务',exact:true}).waitFor();
   const addedCard=page.locator('.service-card').filter({has:page.getByRole('heading',{name:'弹窗测试服务',exact:true})});
-  await addedCard.getByRole('button',{name:'编辑',exact:true}).click();
-  await page.getByRole('button',{name:'移除服务',exact:true}).click();
+  await addedCard.getByRole('button',{name:/^移除 /}).click(); // 卡片右上角 ×
   await page.getByRole('button',{name:'确定移除',exact:true}).click();
   await page.getByRole('heading',{name:'弹窗测试服务',exact:true}).waitFor({state:'hidden'});
   assert.equal(await page.locator('.service-card').count(),1);
