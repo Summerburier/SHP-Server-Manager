@@ -18,7 +18,23 @@ const phase = ref('loading'), page = ref('host'), password = ref(''), username =
 const state = ref(null), hostHistory = ref([]), gameHistory = ref([]), selected = ref('');
 const refreshing = ref(false), loggingIn = ref(false), pending = ref(''), confirmation = ref(null), dialog = ref(null);
 const pluginsData = ref(null), pluginBusy = ref('');
-let timer, epoch = 0, disposed = false;
+let timer, epoch = 0, disposed = false, initialSync = true;
+async function checkUpdater(instance) {
+  if (instance.pluginId !== 'stronghold-updater' || !instance.enabled) return;
+  try {
+    const previous = instance.result?.检查时间;
+    pluginsData.value = await api(`/api/plugins/instances/${instance.id}/actions/check`, { method: 'POST', body: '{}' });
+    for (let i = 0; i < 12 && !disposed; i++) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      if (disposed) return;
+      const result = await api('/api/plugins');
+      pluginsData.value = result;
+      const current = result.instances?.find(item => item.id === instance.id)?.result;
+      if (current?.检查时间 && current.检查时间 !== previous) break;
+      if (current?.当前阶段 === '检查失败') break;
+    }
+  } catch (error) { notify(`版本检查失败：${error.message}`, 'error'); }
+}
 const titles = { host: ['运行监控', '服务器性能、玩家与游戏对局，集中监控。'], game: ['服务', '集中管理已接入服务的运行状态与启停操作。'], plugins: ['插件管理', '安装扩展，配置参数并查看运行结果。'], settings: ['设置', '管理员账户、采样间隔与插件目录。'] };
 const tabs = [['host', '运行监控'], ['game', '服务'], ['plugins', '插件管理'], ['settings', '设置']];
 const gameServers = computed(() => state.value?.servers.filter(s => s.url) || []);
@@ -61,7 +77,8 @@ async function refresh() {
   refreshing.value = true; clearTimeout(timer);
   const capturedEpoch = epoch;
   try {
-    const result = await api('/api/status');
+    const result = await api(initialSync ? '/api/status?sync=1' : '/api/status');
+    initialSync = false;
     if (capturedEpoch !== epoch || disposed) return;
     if (state.value?.startedAt !== result.startedAt) { hostHistory.value = []; gameHistory.value = []; }
     state.value = result; phase.value = 'ready';
@@ -79,7 +96,7 @@ async function refresh() {
 }
 async function login() {
   loggingIn.value = true; loginError.value = '';
-  try { await api('/api/login', { method: 'POST', body: JSON.stringify({ username: username.value, password: password.value }) }); password.value = ''; epoch++; message.value = ''; await refresh(); }
+  try { await api('/api/login', { method: 'POST', body: JSON.stringify({ username: username.value, password: password.value }) }); password.value = ''; epoch++; initialSync = true; message.value = ''; await refresh(); }
   catch (error) { loginError.value = error.message; notify(error.message, 'error'); }
   finally { loggingIn.value = false; }
 }
@@ -116,7 +133,7 @@ function savePluginSettings({ id, settings, label, service }) { return pluginReq
 function addPluginInstance(payload) { return pluginRequest(`/api/plugins/${payload.pluginId}/instances`, { label: payload.label, service: payload.service, settings: payload.settings || {} }, '已添加插件实例'); }
 function removePluginInstance(instance) { return pluginRequest(`/api/plugins/instances/${instance.id}/remove`, {}, '已移除插件实例'); }
 function runPluginAction({ id, key, label }) { return pluginRequest(`/api/plugins/instances/${id}/actions/${key}`, {}, label ? `${label}已触发` : '操作已触发'); }
-function resumeUpdates() { if (!document.hidden && !['login', 'setup'].includes(phase.value)) refresh(); }
+function resumeUpdates() { if (!document.hidden && !['login', 'setup'].includes(phase.value)) { initialSync = true; refresh(); } }
 onMounted(async () => { try { const setup = await requestJson('/api/setup'); if (setup.required) phase.value = 'setup'; else refresh(); } catch { refresh(); } document.addEventListener('visibilitychange', resumeUpdates); window.addEventListener('online', resumeUpdates); });
 onUnmounted(() => { disposed = true; epoch++; clearTimeout(timer); document.removeEventListener('visibilitychange', resumeUpdates); window.removeEventListener('online', resumeUpdates); });
 </script>
@@ -191,7 +208,7 @@ onUnmounted(() => { disposed = true; epoch++; clearTimeout(timer); document.remo
       <GamePanel v-if="page === 'game'" :servers="state.servers" :pending="pending" @action="askAction"
         @updated="refresh" />
       <PluginPanel v-if="page === 'plugins'" :data="pluginsData" :busy="pluginBusy" :services="pluginServices"
-        @scan="scanPlugins" @toggle="togglePlugin" @settings="savePluginSettings" @add="addPluginInstance" @remove="removePluginInstance" @action="runPluginAction" />
+        @check="checkUpdater" @scan="scanPlugins" @toggle="togglePlugin" @settings="savePluginSettings" @add="addPluginInstance" @remove="removePluginInstance" @action="runPluginAction" />
       <SettingsPanel v-if="page === 'settings'" />
       <footer><span>卫戍中枢</span><span>管理后台与游戏服务独立运行</span></footer>
     </main>

@@ -6,7 +6,7 @@
 //   - git：git pull --ff-only origin master；更新前记录提交，回滚即 git reset --hard。
 // 支持操作按钮：update（立即更新）、rollback（回滚到上一版本）。
 // 后台异步执行，collect/action 立即返回，避免占用后台插件 5 秒调用超时。
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createWriteStream } from 'node:fs';
 import { readFile, writeFile, mkdir, mkdtemp, rm, rmdir, readdir, stat, copyFile, rename } from 'node:fs/promises';
@@ -20,7 +20,9 @@ const REPOSITORY = 'sganggs/Stronghold-Protocol';
 const BRANCH = 'master';
 
 const exec = promisify(execFile);
-const state = { lastRunDay: null, lastRunAt: null, running: false, lastResult: null, lastError: null, lastGood: null };
+const state = { lastRunDay: null, lastRunAt: null, running: false, lastResult: null, lastError: null, lastGood: null, latestVersion: null, checkedAt: null, phase: '空闲', progress: null, logs: [] };
+function log(message) { state.logs.push(`[${new Date().toLocaleTimeString('zh-CN', { hour12: false })}] ${message}`); if (state.logs.length > 100) state.logs.shift(); }
+function phase(message) { state.phase = message; log(message); }
 
 const pad = n => String(n).padStart(2, '0');
 const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -77,11 +79,13 @@ async function loadState(path) {
     const raw = JSON.parse(await readFile(path, 'utf8'));
     state.lastRunDay = raw.lastRunDay ?? null; state.lastRunAt = raw.lastRunAt ?? null;
     state.lastResult = raw.lastResult ?? null; state.lastGood = raw.lastGood ?? null;
+    state.latestVersion = raw.latestVersion ?? null; state.checkedAt = raw.checkedAt ?? null;
+    state.logs = Array.isArray(raw.logs) ? raw.logs.slice(-100) : [];
   } catch { /* 首次运行 */ }
 }
 
 async function saveState(path) {
-  try { await mkdir(dirname(path), { recursive: true }); await writeFile(path, JSON.stringify({ lastRunDay: state.lastRunDay, lastRunAt: state.lastRunAt, lastResult: state.lastResult, lastGood: state.lastGood }, null, 2)); }
+  try { await mkdir(dirname(path), { recursive: true }); await writeFile(path, JSON.stringify({ lastRunDay: state.lastRunDay, lastRunAt: state.lastRunAt, lastResult: state.lastResult, lastGood: state.lastGood, latestVersion: state.latestVersion, checkedAt: state.checkedAt, logs: state.logs }, null, 2)); }
   catch { /* 状态非关键 */ }
 }
 
@@ -100,6 +104,10 @@ function summary(context) {
   return {
     状态: state.running ? '更新中…' : targetError ? '未就绪' : state.lastError ? '上次失败' : state.lastResult ? '已就绪' : '待运行',
     更新方式: s.mode === 'git' ? 'Git 拉取' : '官方增量更新包',
+    当前阶段: state.phase,
+    ...(state.progress !== null ? { 下载进度: `${state.progress}%` } : {}),
+    ...(state.latestVersion ? { 最新版本: `v${state.latestVersion}`, 检查时间: new Date(state.checkedAt).toLocaleString('zh-CN') } : {}),
+    日志: state.logs.slice(-60),
     服务: target || '未绑定',
     计划: `每天 ${pad(Number(s.scheduleHour) || 0)}:00`,
     上次运行: state.lastRunAt ? new Date(state.lastRunAt).toLocaleString('zh-CN') : '从未',
@@ -112,13 +120,14 @@ function summary(context) {
 }
 
 function startJob(context) {
+  if (state.running) throw new Error('已有更新任务正在执行');
   const j = job(context);
-  state.running = true; state.lastError = null;
+  state.running = true; state.lastError = null; state.logs = []; state.progress = null; phase('开始更新');
   const day = dayKey(new Date());
   Promise.resolve()
     .then(() => doUpdate(j))
-    .then(result => { state.lastResult = result; state.lastError = null; })
-    .catch(error => { state.lastError = error.message; })
+    .then(result => { state.lastResult = result; state.lastError = null; phase('更新任务结束'); state.progress = null; })
+    .catch(error => { state.lastError = error.message; phase(`更新失败：${error.message}`); })
     .finally(() => { state.running = false; state.lastRunDay = day; state.lastRunAt = Date.now(); return saveState(j.statePath); });
   return summary(context);
 }
@@ -136,6 +145,14 @@ export async function collect(snapshot, context) {
 // 只提供“立即更新”。回滚是自动的：更新失败时由 releaseUpdate 调用 rollbackRelease。
 export async function action(key, context) {
   if (key === 'update') return startJob(context);
+  if (key === 'check') {
+    const j = job(context);
+    if (!state.running) {
+      phase('正在检查最新版本');
+      void checkLatest(j).then(() => saveState(j.statePath)).catch(error => { log(`检查失败：${error.message}`); state.phase = '检查失败'; });
+    }
+    return summary(context);
+  }
   throw new Error('未知操作');
 }
 
@@ -145,7 +162,7 @@ async function doUpdate(j) {
   const steps = [], warnings = [];
   const result = j.mode === 'git' ? await gitUpdate(j, steps) : await releaseUpdate(j, steps, warnings);
   if (result.updated) {
-    if (j.unit) steps.push(await restartUnit(j));               // systemd 服务：更新后自动重启
+    if (j.unit) { phase('重启游戏服务'); steps.push(await restartUnit(j)); }
     else steps.push('已更新，请在“服务”页重启服务使其生效');
   }
   return { version: result.version, steps, warnings };
@@ -169,23 +186,36 @@ async function gitUpdate(j, steps) {
   return { updated, version: updated ? `${before.slice(0, 7)} → ${after.slice(0, 7)}` : `v${before.slice(0, 7)}` };
 }
 
-async function releaseUpdate(j, steps, warnings) {
-  const current = await installedVersion(j.dir);
+async function checkLatest(j) {
   const response = await fetch(`https://api.github.com/repos/${REPOSITORY}/releases/latest`, { headers: { 'User-Agent': 'shp-stronghold-updater', Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(j.timeoutMs) });
   if (!response.ok) throw new Error(`获取最新 Release 失败：HTTP ${response.status}`);
   const release = await response.json();
-  const version = String(release.tag_name || release.name || '').replace(/^v/, '');
+  state.latestVersion = String(release.tag_name || release.name || '').replace(/^v/, '');
+  state.checkedAt = Date.now();
+  log(`最新 Release：v${state.latestVersion}`);
+  return release;
+}
+async function releaseUpdate(j, steps, warnings) {
+  phase('检查最新版本');
+  const current = await installedVersion(j.dir);
+  const release = await checkLatest(j);
+  const version = state.latestVersion;
   steps.push(`当前版本 v${current ?? '未知'}，最新 Release v${version}`);
   if (current && compareVersions(version, current) <= 0) { steps.push('已是最新，无需更新'); return { updated: false, version: `v${current}` }; }
   const asset = (release.assets || []).find(a => /-update\.zip$/i.test(a.name));
   if (!asset) throw new Error(`Release v${version} 没有增量更新包（-update.zip）`);
   steps.push(`下载 ${asset.name}（${mb(asset.size || 0)}）`);
 
-  const work = await mkdtemp(join(tmpdir(), 'shp-sh-update-'));
+  // Download and extract on the persistent disk, not a small /tmp tmpfs.
+  await mkdir(dirname(j.statePath), { recursive: true });
+  const work = await mkdtemp(join(dirname(j.statePath), 'shp-sh-update-'));
   try {
     const zip = join(work, asset.name);
-    await download(asset.browser_download_url, zip, j.timeoutMs);
+    phase(`下载 ${asset.name}（${mb(asset.size || 0)}）`);
+    await download(asset.browser_download_url, zip, j.timeoutMs, (bytes, total) => { state.progress = total ? Math.min(100, Math.floor(bytes * 100 / total)) : null; });
+    log(`下载完成：${asset.name}`);
     const extract = join(work, 'x'); await mkdir(extract, { recursive: true });
+    phase('解压更新包');
     await extractZip(zip, extract, j.timeoutMs);
     const root = await innerRoot(extract);
     const updatePath = join(root, 'UPDATE.json');
@@ -197,16 +227,23 @@ async function releaseUpdate(j, steps, warnings) {
       steps.push(`适用于 v${from.join('、') || '（未声明）'}`);
     }
 
+    phase('备份原文件');
     const backup = await makeBackup(j, meta, current, version);
+    log(`备份完成：${backup.count} 个文件`);
     state.lastGood = { mode: 'release', backupDir: backup.dir, version: current, at: Date.now() };
     steps.push(`已创建回滚点（备份 ${backup.count} 个文件）`);
 
+    phase('覆盖安装文件');
     const count = await overlayCopy(root, j.dir);
+    log(`文件覆盖完成：${count} 个文件`);
     steps.push(`解压覆盖 ${count} 个文件 → ${j.dir}`);
+    phase('应用官方更新');
     const applied = await applyOfficial(j.dir);
+    log(applied.text);
     steps.push(applied.text);
     if (applied.failed) {
       warnings.push('更新未应用，已自动回滚到更新前状态');
+      phase('更新失败，正在回滚');
       await rollbackRelease(j, steps);
       return { updated: false, version: `v${current ?? '未知'}` };
     }
@@ -265,15 +302,29 @@ async function rollbackRelease(j, steps) {
   steps.push(`已回滚：恢复 ${(meta.saved || []).length} 个文件，删除 ${(meta.added || []).length} 个新增文件，重启服务后生效`);
 }
 
-async function download(url, file, timeoutMs) {
+async function download(url, file, timeoutMs, onProgress = () => {}) {
   const response = await fetch(url, { headers: { 'User-Agent': 'shp-stronghold-updater' }, signal: AbortSignal.timeout(timeoutMs), redirect: 'follow' });
   if (!response.ok || !response.body) throw new Error(`下载失败：HTTP ${response.status}`);
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(file));
+  const total = Number(response.headers.get('content-length')) || 0;
+  let bytes = 0, last = 0;
+  const source = Readable.fromWeb(response.body);
+  source.on('data', chunk => {
+    bytes += chunk.length;
+    if (Date.now() - last >= 500) { last = Date.now(); onProgress(bytes, total); }
+  });
+  await pipeline(source, createWriteStream(file));
+  onProgress(bytes, total);
 }
 
 async function extractZip(zip, dir, timeoutMs) {
-  try { await command('unzip', ['-o', '-q', zip, '-d', dir], timeoutMs); return; } catch { /* no unzip: bsdtar */ }
-  await command('tar', ['-xf', zip, '-C', dir], timeoutMs);
+  await new Promise((resolve, reject) => {
+    const child = spawn('unzip', ['-o', '-q', zip, '-d', dir], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+    let stderr = '';
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-4096); });
+    const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('解压超时')); }, timeoutMs);
+    child.once('error', error => { clearTimeout(timer); reject(new Error(`无法启动 unzip：${error.message}`)); });
+    child.once('close', code => { clearTimeout(timer); if (code === 0) resolve(); else reject(new Error(`解压失败（退出码 ${code}）：${stderr.trim() || '检查 ZIP 格式、磁盘空间或权限'}`)); });
+  });
 }
 
 async function innerRoot(dir) {

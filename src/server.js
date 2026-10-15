@@ -50,6 +50,15 @@ let hostHistory = [];
 const monitorHost = createHostMonitor(config.host);
 let hostLatest = null, hostPolling = false;
 let polling = false, closing = false;
+let syncPending = null;
+let lastSync = 0;
+async function syncNow() {
+  if (syncPending) return syncPending;
+  if (Date.now() - lastSync < 1500) return;
+  lastSync = Date.now();
+  syncPending = Promise.all([sample(), sampleHost()]).finally(() => { syncPending = null; });
+  await syncPending;
+}
 // Port derived automatically: project env.PORT, or a systemd unit's Environment / ExecStart.
 function portOf(s) {
   if (s.project) { const port = (s.project.env || {}).PORT; return port && /^\d{1,5}$/.test(String(port)) ? Number(port) : null; }
@@ -228,11 +237,14 @@ const server = http.createServer(async (req, res) => {
       if(!target.project)return json(res,200,{text:'此服务未接入本地日志源'});
       let file;try{file=await open(resolve(dataDir,'service-'+target.id+'.log'),'r');const info=await file.stat();const size=Math.min(info.size,65536),buffer=Buffer.alloc(size);await file.read(buffer,0,size,info.size-size);return json(res,200,{text:buffer.toString('utf8')});}catch(error){if(error.code==='ENOENT')return json(res,200,{text:'服务尚无日志'});throw error;}finally{await file?.close();}
     }
-    if (req.method === 'GET' && url.pathname === '/api/status') return json(res, 200, {
-      now: Date.now(), startedAt, pollIntervalSeconds: config.pollIntervalSeconds, hostPollIntervalSeconds: config.host.pollIntervalSeconds,
-      host: hostLatest,
-      servers: config.servers.map(s => ({ id: s.id, name: s.name || latest.get(s.id)?.control?.description || s.id, url: effectiveUrl(s), actions: services.actions(s), kind: s.project ? "project" : s.systemd ? "systemd" : "http", busy: busy.has(s.id), ...(latest.get(s.id) || { online: false, error: '等待首次采样' }) }))
-    });
+    if (req.method === 'GET' && url.pathname === '/api/status') {
+      if (url.searchParams.get('sync') === '1') await syncNow();
+      return json(res, 200, {
+        now: Date.now(), startedAt, pollIntervalSeconds: config.pollIntervalSeconds, hostPollIntervalSeconds: config.host.pollIntervalSeconds,
+        host: hostLatest,
+        servers: config.servers.map(s => ({ id: s.id, name: s.name || latest.get(s.id)?.control?.description || s.id, url: effectiveUrl(s), actions: services.actions(s), kind: s.project ? "project" : s.systemd ? "systemd" : "http", busy: busy.has(s.id), ...(latest.get(s.id) || { online: false, error: '等待首次采样' }) }))
+      });
+    }
     if (req.method === 'GET' && url.pathname === '/api/host/history') return json(res, 200, historySince(hostHistory, url));
     if (req.method === 'GET' && url.pathname === '/api/plugins') return json(res, 200, plugins.list());
     if (req.method === 'POST' && url.pathname === '/api/plugins/rescan') {

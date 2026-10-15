@@ -3,7 +3,7 @@ import { ref, computed } from 'vue';
 import PluginResult from './PluginResult.vue';
 
 const props = defineProps({ data: Object, busy: String, services: { type: Array, default: () => [] } });
-const emit = defineEmits(['scan', 'toggle', 'settings', 'add', 'remove', 'action']);
+const emit = defineEmits(['scan', 'toggle', 'settings', 'add', 'remove', 'action', 'check']);
 const labels = { enabled: '已启用', disabled: '已停用', starting: '启动中', error: '运行异常' };
 
 const viewingId = ref(null), detailId = ref(null), editingId = ref(null);
@@ -63,10 +63,10 @@ function fieldsOf(instance) {
   if (Array.isArray(instance.settings) && instance.settings.length) return instance.settings;
   return Object.keys(instance.values || {}).map(key => ({ key, label: key, type: typeof instance.values[key] === 'number' ? 'number' : typeof instance.values[key] === 'boolean' ? 'boolean' : 'text' }));
 }
-function openPlugin(group) { viewingId.value = group.pluginId; detailId.value = null; viewer.value.showModal(); }
+function openPlugin(group) { viewingId.value = group.pluginId; detailId.value = null; viewer.value.showModal(); if (group.pluginId === 'stronghold-updater') for (const instance of group.instances) emit('check', instance); }
 function closePlugin() { viewer.value?.close(); }
 function resetPlugin() { viewingId.value = null; detailId.value = null; }
-function openDetail(instance) { detailId.value = instance.id; }
+function openDetail(instance) { detailId.value = instance.id; if (instance.pluginId === 'stronghold-updater') emit('check', instance); }
 function openSettings(instance) { editingId.value = instance.id; editMeta.value = { service: instance.service || props.services[0]?.id || '' }; draft.value = JSON.parse(JSON.stringify(instance.values || {})); editor.value.showModal(); }
 function closeSettings() { editor.value?.close(); }
 function resetEditor() { editingId.value = null; draft.value = {}; }

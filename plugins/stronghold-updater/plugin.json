@@ -1,12 +1,13 @@
 {
   "id": "stronghold-updater",
   "name": "卫戍协议 · 定时更新",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "apiVersion": 1,
   "description": "每天定时更新 Stronghold-Protocol：下载官方增量更新包（-update.zip）并应用，或从 GitHub 拉取代码。更新失败会自动回滚，并支持超时设置。",
   "entry": "index.mjs",
   "actions": [
-    { "key": "update", "label": "立即更新" }
+    { "key": "update", "label": "立即更新" },
+    { "key": "check", "label": "检查最新版本" }
   ],
   "settings": [
     { "key": "mode", "type": "select", "label": "更新方式", "default": "release", "options": [
