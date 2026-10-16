@@ -188,3 +188,7 @@ npm run test:browser     # 可选：本机 Chrome/Edge 端到端验证，截图�
 - **本项目**：[Summerburier/Stronghold-Protocol-Server-Manager](https://github.com/Summerburier/Stronghold-Protocol-Server-Manager)
 
 其他系统：Windows / macOS 同样是 `npm ci && npm run build && npm start`（PowerShell 用 `Copy-Item`）；独立项目启动脚本见 `scripts/start-service-linux.sh`、`start-service-macos.sh`、`start-service-windows.ps1`。
+
+更新插件 2.3：默认每日 04:00，支持零点；Windows 使用 PowerShell/.NET 原生 ZIP 解压，Linux/macOS 使用 unzip。增量包必须包含清单，写入前检查文件路径与符号链接；覆盖或官方应用失败都会尝试恢复回滚点，失败状态保留到重启后。Git 更新要求 master 分支且工作区干净。更新会修改所绑定游戏目录，备份存放在管理器 data 中；原游戏目录不会在插件测试时被修改。
+
+更新插件绑定 systemd 服务后，实际更新成功会自动执行 systemctl restart，并检查 ActiveState=active；无需更新时不重启。重启失败会明确标记任务失败并保留“文件已应用”的说明，避免误报完成。使用 sudo 的服务需要对应 restart 和 show 权限。

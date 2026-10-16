@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue';
+import UpdaterStatus from './UpdaterStatus.vue';
 import PluginResult from './PluginResult.vue';
 
 const props = defineProps({ data: Object, busy: String, services: { type: Array, default: () => [] } });
@@ -36,7 +37,7 @@ function notices(instance) {
     for (const key of ['错误', 'error', 'errors']) if (result[key]) for (const text of asList(result[key])) out.push({ level: 'error', text });
     for (const key of ['警告', '告警', 'warning', 'warnings']) if (result[key]) for (const text of asList(result[key])) out.push({ level: 'warning', text });
   }
-  return out;
+  return out.filter((notice,index)=>out.findIndex(other=>other.level===notice.level&&other.text===notice.text)===index);
 }
 function summary(instance) {
   const result = instance.result;
@@ -45,9 +46,9 @@ function summary(instance) {
   if (Array.isArray(result)) return [{ label: '条目', value: String(result.length) }];
   const out = [];
   for (const [key, value] of Object.entries(result)) {
-    if (['步骤', '详情', '日志', '警告', '告警', '错误'].includes(key)) continue;
+    if (['步骤', '详情', '日志', '警告', '告警', '错误','状态','服务','error','errors','warnings','warning'].includes(key)) continue;
     if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) out.push({ label: key, value: value === true ? '是' : value === false ? '否' : String(value) });
-    if (out.length >= 5) break;
+    if (out.length >= 3) break;
   }
   return out;
 }
@@ -66,7 +67,7 @@ function fieldsOf(instance) {
 function openPlugin(group) { viewingId.value = group.pluginId; detailId.value = null; viewer.value.showModal(); if (group.pluginId === 'stronghold-updater') for (const instance of group.instances) emit('check', instance); }
 function closePlugin() { viewer.value?.close(); }
 function resetPlugin() { viewingId.value = null; detailId.value = null; }
-function openDetail(instance) { detailId.value = instance.id; if (instance.pluginId === 'stronghold-updater') emit('check', instance); }
+function openDetail(instance) { detailId.value = instance.id; }
 function openSettings(instance) { editingId.value = instance.id; editMeta.value = { service: instance.service || props.services[0]?.id || '' }; draft.value = JSON.parse(JSON.stringify(instance.values || {})); editor.value.showModal(); }
 function closeSettings() { editor.value?.close(); }
 function resetEditor() { editingId.value = null; draft.value = {}; }
@@ -78,7 +79,7 @@ function submitAdd() { emit('add', { pluginId: viewingId.value, label: serviceNa
 
 <template>
   <section class="plugin-management">
-    <div class="section-heading plugin-toolbar"><div><h2>已安装插件</h2><p>点击插件卡片进入，管理它的各个实例。</p></div><button class="secondary" :disabled="!!busy" @click="$emit('scan')">{{ busy ? '处理中…' : '重新扫描' }}</button></div>
+    <div class="section-heading plugin-toolbar"><div><h2>已安装插件</h2><p></p></div><button class="secondary" :disabled="!!busy" @click="$emit('scan')">{{ busy ? '处理中…' : '重新扫描' }}</button></div>
     <div v-if="data?.errors.length" class="notice" role="status"><p v-for="error in data.errors" :key="error">{{ error }}</p></div>
     <div v-if="data && !groups.length" class="empty">暂无插件，放入 plugins/&lt;id&gt;/ 后点击“重新扫描”。</div>
     <div class="plugin-grid">
@@ -103,17 +104,17 @@ function submitAdd() { emit('add', { pluginId: viewingId.value, label: serviceNa
         </div>
         <template v-if="detail">
           <p class="plugin-editor-desc">{{ detail.service ? '绑定服务：' + serviceName(detail.service) : (detail.description || '') }} · 最近执行：{{ stamp(detail.updatedAt) }}</p>
-          <div class="plugin-detail-body"><PluginResult v-if="detail.result !== null && detail.result !== undefined" :value="detail.result" /><p v-else class="plugin-muted">暂无执行结果</p></div>
+          <div class="plugin-detail-body"><UpdaterStatus v-if="detail.pluginId === 'stronghold-updater'" :instance="detail" detailed /><PluginResult v-else-if="detail.result !== null && detail.result !== undefined" :value="detail.result" /><p v-else class="plugin-muted">暂无执行结果</p></div>
         </template>
         <template v-else>
-          <p class="plugin-editor-desc">{{ viewing.description || '暂无说明' }} · {{ viewing.instances.length }} 个实例</p>
+
           <div class="instance-list">
             <div v-for="instance in viewing.instances" :key="instance.id" class="instance-row">
-              <div class="plugin-instance-head"><span class="plugin-instance-label">{{ instance.label }}<small v-if="instance.service"> · {{ serviceName(instance.service) }}</small></span><span :class="['plugin-state', statusClass(instance.status)]"><i></i>{{ labels[instance.status] || instance.status }}</span></div>
-              <p v-for="(notice, index) in notices(instance)" :key="index" :class="['plugin-notice', notice.level]" role="alert">{{ notice.text }}</p>
-              <div class="plugin-instance-summary"><span v-for="item in summary(instance)" :key="item.label"><b>{{ item.label }}</b><em>{{ item.value }}</em></span><span v-if="!summary(instance).length" class="plugin-muted">{{ instance.enabled ? '等待首次执行…' : '实例已停用。' }}</span></div>
+              <div class="plugin-instance-head"><span class="plugin-instance-label">{{ instance.label }}<small v-if="instance.service && instance.label !== serviceName(instance.service)"> · {{ serviceName(instance.service) }}</small></span><span :class="['plugin-state', statusClass(instance.status)]"><i></i>{{ labels[instance.status] || instance.status }}</span></div>
+              <UpdaterStatus v-if="instance.pluginId === 'stronghold-updater'" :instance="instance" /><p v-for="(notice, index) in (instance.pluginId === 'stronghold-updater' ? [] : notices(instance))" :key="index" :class="['plugin-notice', notice.level]" role="alert">{{ notice.text }}</p>
+              <div v-if="instance.pluginId !== 'stronghold-updater'" class="plugin-instance-summary"><span v-for="item in summary(instance)" :key="item.label"><b>{{ item.label }}</b><em>{{ item.value }}</em></span><span v-if="!summary(instance).length" class="plugin-muted">{{ instance.enabled ? '等待首次执行…' : '实例已停用。' }}</span></div>
               <div class="plugin-instance-actions">
-                <button v-if="instance.result !== null && instance.result !== undefined" type="button" class="secondary" :disabled="!!busy" @click="openDetail(instance)">详情</button>
+                <button v-if="instance.result !== null && instance.result !== undefined" type="button" class="secondary" :disabled="!!busy" @click="openDetail(instance)">{{ instance.pluginId === 'stronghold-updater' ? '运行记录' : '详情' }}</button>
                 <button v-if="fieldsOf(instance).length" type="button" class="secondary" :disabled="!!busy" @click="openSettings(instance)">设置</button>
                 <button v-for="action in instance.actions || []" :key="action.key" type="button" :class="['secondary', { danger: action.danger }]" :disabled="!!busy || !instance.enabled" :title="instance.enabled ? '' : '请先启用该实例'" @click="$emit('action', { id: instance.id, key: action.key, label: action.label })">{{ action.label }}</button>
                 <button type="button" class="secondary plugin-remove" :disabled="!!busy" title="移除该实例" @click="$emit('remove', instance)">移除</button>

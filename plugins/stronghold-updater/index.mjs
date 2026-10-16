@@ -9,10 +9,10 @@
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createWriteStream } from 'node:fs';
-import { readFile, writeFile, mkdir, mkdtemp, rm, rmdir, readdir, stat, copyFile, rename } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, mkdtemp, rm, rmdir, readdir, stat, lstat, copyFile, rename } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, relative, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 
@@ -20,7 +20,7 @@ const REPOSITORY = 'sganggs/Stronghold-Protocol';
 const BRANCH = 'master';
 
 const exec = promisify(execFile);
-const state = { lastRunDay: null, lastRunAt: null, running: false, lastResult: null, lastError: null, lastGood: null, latestVersion: null, checkedAt: null, phase: '空闲', progress: null, logs: [] };
+const state = { lastRunDay: null, lastRunAt: null, running: false, checking: false, lastResult: null, lastError: null, lastGood: null, currentVersion: null, latestVersion: null, checkedAt: null, phase: '空闲', progress: null, logs: [] };
 function log(message) { state.logs.push(`[${new Date().toLocaleTimeString('zh-CN', { hour12: false })}] ${message}`); if (state.logs.length > 100) state.logs.shift(); }
 function phase(message) { state.phase = message; log(message); }
 
@@ -61,6 +61,7 @@ function job(context) {
   const service = (context.service || '').trim();
   if (!service) throw new Error('未绑定服务：请在实例设置里绑定一个本地服务');
   const server = (context.global?.servers || []).find(x => x.id === service);
+  if(server?.kind==='systemd' && !server.unit?.trim())throw new Error('绑定的 systemd 服务缺少 unit 名称，无法自动重启');
   const path = (server?.path || '').trim();
   if (!path) throw new Error(`服务「${server?.name || service}」没有可用目录（project 目录或 systemd 的 WorkingDirectory）`);
   const minutes = Math.min(180, Math.max(1, Number(s.timeoutMinutes) || 30));
@@ -78,6 +79,7 @@ async function loadState(path) {
   try {
     const raw = JSON.parse(await readFile(path, 'utf8'));
     state.lastRunDay = raw.lastRunDay ?? null; state.lastRunAt = raw.lastRunAt ?? null;
+    state.lastError=raw.lastError ?? null;
     state.lastResult = raw.lastResult ?? null; state.lastGood = raw.lastGood ?? null;
     state.latestVersion = raw.latestVersion ?? null; state.checkedAt = raw.checkedAt ?? null;
     state.logs = Array.isArray(raw.logs) ? raw.logs.slice(-100) : [];
@@ -85,11 +87,12 @@ async function loadState(path) {
 }
 
 async function saveState(path) {
-  try { await mkdir(dirname(path), { recursive: true }); await writeFile(path, JSON.stringify({ lastRunDay: state.lastRunDay, lastRunAt: state.lastRunAt, lastResult: state.lastResult, lastGood: state.lastGood, latestVersion: state.latestVersion, checkedAt: state.checkedAt, logs: state.logs }, null, 2)); }
+  try { await mkdir(dirname(path), { recursive: true }); await writeFile(path, JSON.stringify({ lastRunDay: state.lastRunDay, lastRunAt: state.lastRunAt, lastResult: state.lastResult, lastError: state.lastError, lastGood: state.lastGood, latestVersion: state.latestVersion, checkedAt: state.checkedAt, logs: state.logs }, null, 2)); }
   catch { /* 状态非关键 */ }
 }
 
-function scheduleFor(s, now) { const at = new Date(now); at.setHours(Number(s.scheduleHour) || 0, 0, 0, 0); return at; }
+function hourOf(s) { const hour=Number(s.scheduleHour ?? 4); return Number.isInteger(hour)&&hour>=0&&hour<=23?hour:4; }
+function scheduleFor(s, now) { const at = new Date(now); at.setHours(hourOf(s), 0, 0, 0); return at; }
 function isDue(s, now) { return state.lastRunDay !== dayKey(new Date(now)) && now >= scheduleFor(s, now).getTime(); }
 function nextRunLabel(s, now) {
   const at = scheduleFor(s, now);
@@ -102,14 +105,15 @@ function summary(context) {
   let target = '', targetError = null;
   try { const j = job(context); target = j.dir; } catch (error) { targetError = error.message; }
   return {
-    状态: state.running ? '更新中…' : targetError ? '未就绪' : state.lastError ? '上次失败' : state.lastResult ? '已就绪' : '待运行',
+    状态: state.running ? '更新中…' : state.checking ? '检查中…' : targetError ? '未就绪' : state.lastError ? '上次失败' : state.lastResult ? '已就绪' : '待运行',
     更新方式: s.mode === 'git' ? 'Git 拉取' : '官方增量更新包',
     当前阶段: state.phase,
     ...(state.progress !== null ? { 下载进度: `${state.progress}%` } : {}),
     ...(state.latestVersion ? { 最新版本: `v${state.latestVersion}`, 检查时间: new Date(state.checkedAt).toLocaleString('zh-CN') } : {}),
+    当前版本: state.currentVersion ? `v${state.currentVersion}` : null,
     日志: state.logs.slice(-60),
     服务: target || '未绑定',
-    计划: `每天 ${pad(Number(s.scheduleHour) || 0)}:00`,
+    计划: `每天 ${pad(hourOf(s))}:00`,
     上次运行: state.lastRunAt ? new Date(state.lastRunAt).toLocaleString('zh-CN') : '从未',
     下次计划: nextRunLabel(s, Date.now()),
     ...(state.lastResult?.version ? { 版本: state.lastResult.version } : {}),
@@ -120,7 +124,7 @@ function summary(context) {
 }
 
 function startJob(context) {
-  if (state.running) throw new Error('已有更新任务正在执行');
+  if (state.running || state.checking) throw new Error('已有更新或检查任务正在执行');
   const j = job(context);
   state.running = true; state.lastError = null; state.logs = []; state.progress = null; phase('开始更新');
   const day = dayKey(new Date());
@@ -138,7 +142,7 @@ export async function start(context) {
 
 export async function collect(snapshot, context) {
   let ready = true; try { job(context); } catch { ready = false; }
-  if (ready && !state.running && isDue(settingsOf(context), Date.now())) startJob(context);
+  if (ready && !state.running && !state.checking && isDue(settingsOf(context), Date.now())) startJob(context);
   return summary(context);
 }
 
@@ -147,9 +151,10 @@ export async function action(key, context) {
   if (key === 'update') return startJob(context);
   if (key === 'check') {
     const j = job(context);
-    if (!state.running) {
+    if (!state.running && !state.checking) {
+      state.checking=true;
       phase('正在检查最新版本');
-      void checkLatest(j).then(() => saveState(j.statePath)).catch(error => { log(`检查失败：${error.message}`); state.phase = '检查失败'; });
+      void checkLatest(j).then(()=>{state.phase='检查完成';}).catch(error=>{state.lastError=error.message;log(`检查失败：${error.message}`);state.phase='检查失败';}).finally(()=>{state.checking=false;return saveState(j.statePath);});
     }
     return summary(context);
   }
@@ -161,22 +166,38 @@ export async function stop() { /* 无需要清理的资源 */ }
 async function doUpdate(j) {
   const steps = [], warnings = [];
   const result = j.mode === 'git' ? await gitUpdate(j, steps) : await releaseUpdate(j, steps, warnings);
-  if (result.updated) {
-    if (j.unit) { phase('重启游戏服务'); steps.push(await restartUnit(j)); }
-    else steps.push('已更新，请在“服务”页重启服务使其生效');
-  }
+  await activateUpdate(j,result,steps);
   return { version: result.version, steps, warnings };
 }
 
 /** Restart a systemd-bound service so the update takes effect (the plugin is bound to its unit). */
-async function restartUnit(j) {
-  const file = j.sudo ? 'sudo' : 'systemctl';
-  const args = j.sudo ? ['-n', 'systemctl', 'restart', j.unit] : ['restart', j.unit];
-  await command(file, args, j.timeoutMs);
-  return `已重启 systemd 服务 ${j.unit}`;
+async function activateUpdate(j,result,steps,restart=restartUnit) {
+  if(!result.updated)return;
+  state.currentVersion=await installedVersion(j.dir);
+  if(!j.unit){steps.push('已更新，请在“服务”页重启服务使其生效');return;}
+  phase('更新已应用，正在重启 systemd 服务');
+  try {steps.push(await restart(j));}
+  catch(error){state.lastResult={version:result.version,steps:[...steps,'systemd 自动重启失败'],warnings:[]};throw new Error(`更新文件已应用，但服务 ${j.unit} 自动重启失败：${error.message}`);}
 }
+async function restartUnit(j,run=command) {
+  const file=j.sudo?'sudo':'systemctl';
+  const args=j.sudo?['-n','systemctl','restart',j.unit]:['restart',j.unit];
+  const timeout=Math.min(j.timeoutMs,60000);
+  await run(file,args,timeout);
+  for(let attempt=0;attempt<20;attempt++){
+    const query=['show',j.unit,'--property=ActiveState','--value'];
+    const active=(await run(file,j.sudo?['-n','systemctl',...query]:query,timeout)).trim();
+    if(active==='active')return `已自动重启 ${j.unit}，运行状态 active`;
+    if(!['activating','reloading'].includes(active))throw new Error('服务状态为 '+(active||'未知'));
+    await new Promise(resolve=>setTimeout(resolve,500));
+  }
+  throw new Error('等待服务进入 active 状态超时');
+}
+export {activateUpdate,restartUnit};
 
 async function gitUpdate(j, steps) {
+  if(await git(j,['status','--porcelain'])) throw new Error('Git 工作区存在本地修改，请先处理后再更新');
+  const branch=await git(j,['branch','--show-current']);if(branch!==BRANCH)throw new Error('请切换到 '+BRANCH+' 分支后更新');
   const before = (await git(j, ['rev-parse', 'HEAD'])).trim();
   const output = await git(j, ['pull', '--ff-only', 'origin', BRANCH]);
   const after = (await git(j, ['rev-parse', 'HEAD'])).trim();
@@ -187,6 +208,7 @@ async function gitUpdate(j, steps) {
 }
 
 async function checkLatest(j) {
+  state.currentVersion=await installedVersion(j.dir);
   const response = await fetch(`https://api.github.com/repos/${REPOSITORY}/releases/latest`, { headers: { 'User-Agent': 'shp-stronghold-updater', Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(j.timeoutMs) });
   if (!response.ok) throw new Error(`获取最新 Release 失败：HTTP ${response.status}`);
   const release = await response.json();
@@ -198,6 +220,7 @@ async function checkLatest(j) {
 async function releaseUpdate(j, steps, warnings) {
   phase('检查最新版本');
   const current = await installedVersion(j.dir);
+  if(!current)throw new Error('无法读取本地 package.json 版本，已停止更新');
   const release = await checkLatest(j);
   const version = state.latestVersion;
   steps.push(`当前版本 v${current ?? '未知'}，最新 Release v${version}`);
@@ -208,6 +231,7 @@ async function releaseUpdate(j, steps, warnings) {
 
   // Download and extract on the persistent disk, not a small /tmp tmpfs.
   await mkdir(dirname(j.statePath), { recursive: true });
+  let backupReady=false;
   const work = await mkdtemp(join(dirname(j.statePath), 'shp-sh-update-'));
   try {
     const zip = join(work, asset.name);
@@ -220,6 +244,7 @@ async function releaseUpdate(j, steps, warnings) {
     const root = await innerRoot(extract);
     const updatePath = join(root, 'UPDATE.json');
     let meta = null;
+    if (!(await exists(updatePath)))throw new Error('更新包缺少 UPDATE.json，已停止更新');
     if (await exists(updatePath)) {
       meta = JSON.parse(await readFile(updatePath, 'utf8'));
       const from = Array.isArray(meta.from) ? meta.from : [];
@@ -227,9 +252,11 @@ async function releaseUpdate(j, steps, warnings) {
       steps.push(`适用于 v${from.join('、') || '（未声明）'}`);
     }
 
+    await validateStage(root,meta,j.dir);
     phase('备份原文件');
     const backup = await makeBackup(j, meta, current, version);
     log(`备份完成：${backup.count} 个文件`);
+    backupReady=true;
     state.lastGood = { mode: 'release', backupDir: backup.dir, version: current, at: Date.now() };
     steps.push(`已创建回滚点（备份 ${backup.count} 个文件）`);
 
@@ -241,14 +268,12 @@ async function releaseUpdate(j, steps, warnings) {
     const applied = await applyOfficial(j.dir);
     log(applied.text);
     steps.push(applied.text);
-    if (applied.failed) {
-      warnings.push('更新未应用，已自动回滚到更新前状态');
-      phase('更新失败，正在回滚');
-      await rollbackRelease(j, steps);
-      return { updated: false, version: `v${current ?? '未知'}` };
-    }
+    if(applied.failed)throw new Error(applied.text);
     await pruneBackups(j, backup.dir);
-    return { updated: true, version: `v${current ? `v${current} → ` : ''}v${version}` };
+    return { updated: true, version: current ? `v${current} → v${version}` : `v${version}` };
+  } catch(error) {
+    if(backupReady){phase('更新异常，正在回滚');try{await rollbackRelease(j,steps);state.lastGood=null;}catch(rollbackError){throw new Error(error.message+'；回滚失败：'+rollbackError.message+'。请保留备份并手动恢复');}throw new Error(error.message+'；已恢复更新前文件');}
+    throw error;
   } finally {
     await rm(work, { recursive: true, force: true }).catch(() => {});
   }
@@ -257,7 +282,7 @@ async function releaseUpdate(j, steps, warnings) {
 /** Back up the files an update will overwrite/delete, and record the files it will newly create. */
 async function makeBackup(j, meta, current, version) {
   const dir = join(j.backupRoot, new Date().toISOString().replace(/[:.]/g, '-'));
-  const paths = new Set(['MANIFEST.json', 'UPDATE.json']);
+  const paths = new Set(['MANIFEST.json', 'UPDATE.json', '.update-applied.json', 'UPDATE.json.rejected']);
   if (meta?.files) for (const rel of Object.keys(meta.files)) paths.add(rel);
   if (Array.isArray(meta?.removed)) for (const item of meta.removed) if (item?.path) paths.add(item.path);
   const saved = [], added = [];
@@ -283,8 +308,7 @@ async function pruneBackups(j, keep) {
   for (const name of entries) if (join(j.backupRoot, name) !== keep) await rm(join(j.backupRoot, name), { recursive: true, force: true }).catch(() => {});
 }
 
-async function rollbackRelease(j, steps) {
-  const backupDir = state.lastGood?.backupDir;
+async function rollbackRelease(j, steps, backupDir = state.lastGood?.backupDir) {
   if (!backupDir) throw new Error('没有可用的回滚点');
   const meta = JSON.parse(await readFile(join(backupDir, 'backup.json'), 'utf8'));
   for (const rel of meta.saved || []) {
@@ -297,7 +321,7 @@ async function rollbackRelease(j, steps) {
     await rm(abs, { force: true }).catch(() => {});
     for (let d = dirname(abs); d.length > j.dir.length; d = dirname(d)) { try { await rmdir(d); } catch { break; } }
   }
-  for (const file of ['UPDATE.json', 'UPDATE.json.rejected', '.update-applied.json']) await rm(join(j.dir, file), { force: true }).catch(() => {});
+
   await rm(backupDir, { recursive: true, force: true }).catch(() => {});
   steps.push(`已回滚：恢复 ${(meta.saved || []).length} 个文件，删除 ${(meta.added || []).length} 个新增文件，重启服务后生效`);
 }
@@ -317,15 +341,28 @@ async function download(url, file, timeoutMs, onProgress = () => {}) {
 }
 
 async function extractZip(zip, dir, timeoutMs) {
-  await new Promise((resolve, reject) => {
-    const child = spawn('unzip', ['-o', '-q', zip, '-d', dir], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
-    let stderr = '';
-    child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-4096); });
-    const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('解压超时')); }, timeoutMs);
-    child.once('error', error => { clearTimeout(timer); reject(new Error(`无法启动 unzip：${error.message}`)); });
-    child.once('close', code => { clearTimeout(timer); if (code === 0) resolve(); else reject(new Error(`解压失败（退出码 ${code}）：${stderr.trim() || '检查 ZIP 格式、磁盘空间或权限'}`)); });
-  });
+  if(process.platform==='win32') {
+    const quote=value=>"'"+value.replaceAll("'","''")+"'";
+    const script=String.raw`$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; $z=[IO.Compression.ZipFile]::OpenRead(${quote(zip)}); try { foreach($e in $z.Entries){if($e.FullName -match '(^[/\\]|(^|[/\\])\.\.([/\\]|$)|:)' -or (($e.ExternalAttributes -shr 16) -band 61440) -eq 40960){throw 'Unsafe ZIP entry'}} } finally {$z.Dispose()}; [IO.Compression.ZipFile]::ExtractToDirectory(${quote(zip)},${quote(dir)})`;
+    await command('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],timeoutMs);return;
+  }
+  const list=await command('unzip',['-Z1',zip],timeoutMs);
+  for(const entry of list.split('\n').filter(Boolean))safePath(entry.replace(/\/$/,''));
+  await command('unzip',['-o','-q',zip,'-d',dir],timeoutMs);
 }
+function safePath(path) {
+  if(typeof path!=='string'||!path||path.includes('\\')||path.includes(':')||isAbsolute(path)||path.split('/').some(p=>!p||p==='.'||p==='..'))throw new Error('更新包包含不安全路径');
+  return path;
+}
+async function validateStage(root,meta,target) {
+  if(!meta?.files||typeof meta.files!=='object'||Array.isArray(meta.files))throw new Error('更新包文件清单无效');
+  const allowed=new Set(['MANIFEST.json','UPDATE.json',...Object.keys(meta.files).map(safePath)]);
+  for(const item of meta.removed||[])safePath(item.path);
+  async function walk(dir){for(const entry of await readdir(dir,{withFileTypes:true})){const path=join(dir,entry.name);if(entry.isSymbolicLink())throw new Error('更新包不允许符号链接');if(entry.isDirectory())await walk(path);else if(!allowed.has(relative(root,path).split('\\').join('/')))throw new Error('更新包包含未声明文件：'+entry.name);}}
+  await walk(root);
+  for(const rel of [...allowed,...(meta.removed||[]).map(x=>x.path)]){let cursor=target;for(const segment of rel.split('/')){cursor=join(cursor,segment);try{if((await lstat(cursor)).isSymbolicLink())throw new Error('安装目录更新路径包含符号链接');}catch(error){if(error.code!=='ENOENT')throw error;}}}
+}
+export {scheduleFor, safePath, validateStage, makeBackup, rollbackRelease, extractZip};
 
 async function innerRoot(dir) {
   const roots = await readdir(dir);
@@ -345,18 +382,18 @@ async function overlayCopy(src, dest, counter = { count: 0 }) {
 
 async function applyOfficial(repoDir) {
   const modPath = join(repoDir, 'server', 'update.js');
-  if (!(await exists(modPath))) return { text: '未找到 server/update.js：重启服务时由启动流程应用', failed: false };
+  if (!(await exists(modPath))) return {text:'未找到官方更新器 server/update.js',failed:true};
   try {
-    const mod = await import(pathToFileURL(modPath).href);
+    const mod = await import(pathToFileURL(modPath).href+'?update='+Date.now());
     const quiet = { log() {}, warn() {}, error() {} };
-    const result = mod.applyPendingUpdate(repoDir, { log: quiet });
+    const result = await mod.applyPendingUpdate(repoDir, { log: quiet });
     if (result.state === 'applied') return { text: `已应用更新：校验 ${result.checked ?? 0} 个文件`, failed: false };
-    if (result.state === 'none') return { text: '没有待应用的更新', failed: false };
+    if (result.state === 'none') return {text:'官方更新器未发现待应用更新，已停止并恢复',failed:true};
     if (result.state === 'failed') {
       await rename(join(repoDir, 'UPDATE.json'), join(repoDir, 'UPDATE.json.rejected')).catch(() => {});
       return { text: `更新包与当前安装不匹配（${result.reason || '文件不一致'}）`, failed: true };
     }
-    return { text: `更新包未应用（${result.state}）`, failed: false };
+    return { text: `更新包未应用（${result.state}）`, failed: true };
   } catch (error) {
     return { text: `应用更新出错：${error.message}`, failed: true };
   }
